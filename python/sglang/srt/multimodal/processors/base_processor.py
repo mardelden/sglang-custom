@@ -41,7 +41,6 @@ from sglang.srt.multimodal.transport.cuda_ipc import (
     get_mm_feature_pool_size_per_worker,
 )
 from sglang.srt.runtime_context import (
-    get_device,
     get_mm,
     get_serving,
 )
@@ -667,7 +666,10 @@ class BaseMultimodalProcessor(ABC):
         if _is_xpu:
             return "xpu"
         if not _is_npu:
-            return f"cuda:{get_device().base_gpu_id}"
+            # This processor's own record, not the published one: engines
+            # sharing a tokenizer process each carry their own base_gpu_id,
+            # and the bag holds whichever engine published last.
+            return f"cuda:{server_args.base_gpu_id}"
         if processor.__class__.__name__ == "MiniMaxVLProcessor":
             # MiniMax's image/video processors create 10-dim tensors during
             # patch extraction, exceeding the Ascend 8-dim limit; patch them

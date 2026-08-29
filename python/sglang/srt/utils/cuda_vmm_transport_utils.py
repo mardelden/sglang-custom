@@ -16,7 +16,6 @@ from sglang.srt.managers.schedule_batch import (
     MultimodalProcessorOutput,
 )
 from sglang.srt.runtime_context import (
-    get_device,
     get_mm,
     get_parallel,
     get_serving,
@@ -948,7 +947,11 @@ class CudaVmmFeatureTransport:
         self.pool = CudaVmmMemoryPool(
             memory_size=per_worker_pool_size,
             recycle_interval=MM_ITEM_MEMORY_POOL_RECYCLE_INTERVAL,
-            base_gpu_id=get_device().base_gpu_id,
+            # Placement, not policy: the pool is allocated on the GPU this
+            # engine owns, and engines sharing a tokenizer process each
+            # bring their own base_gpu_id. Everything else here reads the
+            # bags, which is where the resolved configuration lives.
+            base_gpu_id=server_args.base_gpu_id,
             consumer_count=get_vmm_feature_consumer_count(),
             allow_posix_fallback=server_args.nnodes == 1,
         )
