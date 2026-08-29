@@ -15,11 +15,11 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from pydantic import ValidationError
 
 from sglang.srt.configs.embedding_model_spec import resolved_embedding_plan
+from sglang.srt.arg_groups.overrides import resolving_view
 from sglang.srt.runtime_context import (
     describe_kv_events_publisher,
     get_lora,
     get_serving,
-    resolving_view,
 )
 from sglang.srt.utils.msgspec_utils import msgspec_to_builtins
 
