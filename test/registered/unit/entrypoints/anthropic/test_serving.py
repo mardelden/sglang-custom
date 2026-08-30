@@ -86,6 +86,26 @@ class _FakeNonStreamingErrorOpenAI:
         )
 
 
+class _FakeTemplateErrorOpenAI:
+    """Raises the ``ValueError`` the OpenAI layer uses to signal a client fault.
+
+    ``OpenAIServingChat`` converts chat-template ``raise_exception`` into a
+    ``ValueError`` specifically so the calling surface can answer 400 — which
+    ``/v1/chat/completions`` does. This fake reproduces that hand-off.
+    """
+
+    message = (
+        "Unexpected reasoning effort high. "
+        "Supported types are xhigh (default), medium, and low."
+    )
+
+    def _validate_request(self, chat_request):
+        return None
+
+    def _convert_to_internal_request(self, chat_request, raw_request):
+        raise ValueError(self.message)
+
+
 class _FakeNonStreamingOpenAI:
     """Returns a configurable ChatCompletionResponse from the OpenAI handler."""
 
@@ -531,6 +551,51 @@ class TestAnthropicServing(unittest.TestCase):
         self.assertEqual(payload["error"]["type"], "invalid_request_error")
         self.assertEqual(payload["error"]["message"], "context length exceeded")
 
+    def _template_error_chat_request(self):
+        return ChatCompletionRequest(
+            model="test-model",
+            max_tokens=16,
+            messages=[{"role": "user", "content": "hello"}],
+        )
+
+    def test_conversion_value_error_is_400_non_streaming(self):
+        """A conversion ``ValueError`` is the caller's fault, not a server fault.
+
+        Reporting it as 500 would hide a message that names the supported
+        values and invite clients to retry a request that cannot succeed.
+        """
+        serving = AnthropicServing(_FakeTemplateErrorOpenAI())
+
+        response = asyncio.run(
+            serving._handle_non_streaming(
+                self._template_error_chat_request(),
+                self._anthropic_request(stream=False),
+                object(),
+            )
+        )
+        payload = json.loads(response.body)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(payload["error"]["type"], "invalid_request_error")
+        self.assertEqual(payload["error"]["message"], _FakeTemplateErrorOpenAI.message)
+
+    def test_conversion_value_error_is_400_streaming(self):
+        """Same on the streaming path, which Claude-protocol clients use."""
+        serving = AnthropicServing(_FakeTemplateErrorOpenAI())
+
+        response = asyncio.run(
+            serving._handle_streaming(
+                self._template_error_chat_request(),
+                self._anthropic_request(stream=True),
+                object(),
+            )
+        )
+        payload = json.loads(response.body)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(payload["error"]["type"], "invalid_request_error")
+        self.assertEqual(payload["error"]["message"], _FakeTemplateErrorOpenAI.message)
+
     # ------------------------------------------------------------------
     # Edge-case coverage added in the review-fix pass
     # ------------------------------------------------------------------
@@ -881,22 +946,22 @@ class TestAnthropicServing(unittest.TestCase):
         self.assertEqual(serving.openai_serving_chat.apply_reasoning_calls, [True])
         self.assertTrue(any("omitted" in r for r in log.output))
 
-    def test_request_output_config_effort_maps_to_reasoning_effort(self):
-        """``output_config.effort`` rows map onto ``reasoning_effort``."""
-        for anthropic_effort, openai_effort in [
-            ("low", "low"),
-            ("medium", "medium"),
-            ("high", "high"),
-            ("xhigh", "max"),  # OpenAI Literal has no xhigh
-            ("max", "max"),
-        ]:
-            with self.subTest(anthropic_effort=anthropic_effort):
+    def test_request_output_config_effort_is_forwarded_unchanged(self):
+        """``output_config.effort`` reaches ``reasoning_effort`` untranslated.
+
+        ``ReasoningEffortTier`` already covers every tier Anthropic can send,
+        ``xhigh`` included, so there is nothing to translate. Whether a given
+        tier is usable is model-specific and is decided later by the chat
+        template, which rejects the ones it does not implement.
+        """
+        for effort in ["minimal", "low", "medium", "high", "xhigh", "max"]:
+            with self.subTest(effort=effort):
                 serving = self._serving()
                 request = self._anthropic_request(
-                    output_config={"effort": anthropic_effort}, stream=False
+                    output_config={"effort": effort}, stream=False
                 )
                 chat_request = serving._convert_to_chat_completion_request(request)
-                self.assertEqual(chat_request.reasoning_effort, openai_effort)
+                self.assertEqual(chat_request.reasoning_effort, effort)
 
     def test_request_output_config_task_budget_is_logged_not_enforced(self):
         """``task_budget`` is a soft hint; ``max_tokens`` is the hard cap."""

@@ -621,17 +621,21 @@ class AnthropicServing:
             self.openai_serving_chat.apply_reasoning_enabled(chat_request, enabled)
 
         # Claude 4.7 ``output_config``: map ``effort`` onto the OpenAI
-        # ``reasoning_effort`` knob. ``xhigh`` collapses to ``max`` because
-        # the OpenAI Literal does not include the Anthropic-only ``xhigh``.
+        # ``reasoning_effort`` knob. The value is forwarded unchanged:
+        # ``ReasoningEffortTier`` covers the same six tiers Anthropic sends
+        # (``xhigh`` included), so there is nothing to translate. Whether a
+        # tier is actually usable is model-specific and decided by the chat
+        # template, which rejects the ones it does not implement with a
+        # message naming the ones it does; that reaches the client as a 400
+        # so it can pick another level. Rewriting a tier here would instead
+        # silently substitute a level the caller did not ask for.
         # ``task_budget`` is a soft hint forwarded as a custom param so the
         # model can see it without it becoming a hard cap (``max_tokens``
         # is still the hard cap).
         if anthropic_request.output_config is not None:
             oc = anthropic_request.output_config
             if oc.effort is not None:
-                chat_request.reasoning_effort = (
-                    "max" if oc.effort == "xhigh" else oc.effort
-                )
+                chat_request.reasoning_effort = oc.effort
             if oc.task_budget is not None:
                 # Custom params are silently ignored by backends that
                 # don't recognise them; logging it makes the propagation
@@ -761,7 +765,20 @@ class AnthropicServing:
                 )
             )
             adapted_request.received_time = received_time
+        except asyncio.CancelledError:
+            raise
+        except ValueError as e:
+            return self._conversion_client_error(e)
+        except Exception as e:
+            logger.exception("Error converting Anthropic request: %s", e)
+            return self._error_response(
+                status_code=500,
+                error_type="api_error",
+                message="Internal server error",
+                exception_name=type(e).__name__,
+            )
 
+        try:
             # Get response from OpenAI handler
             response = await self.openai_serving_chat._handle_non_streaming_request(
                 adapted_request, processed_request, raw_request
@@ -813,6 +830,8 @@ class AnthropicServing:
             adapted_request.received_time = received_time
         except asyncio.CancelledError:
             raise
+        except ValueError as e:
+            return self._conversion_client_error(e)
         except Exception as e:
             logger.exception("Error converting streaming request: %s", e)
             return self._error_response(
@@ -1381,6 +1400,26 @@ class AnthropicServing:
             status_code=status_code,
             error_type=error_type,
             message=message,
+        )
+
+    def _conversion_client_error(self, exc: ValueError) -> JSONResponse:
+        """Turn a request-conversion ``ValueError`` into a 400.
+
+        ``OpenAIServingChat`` raises ``ValueError`` for faults it has already
+        diagnosed as the caller's — chief among them chat-template
+        ``raise_exception``, which it converts specifically so the calling
+        surface can answer 400 (``/v1/chat/completions`` does). The most
+        common case is a ``reasoning_effort`` tier the model's template does
+        not implement, where the message names the tiers it accepts.
+
+        Reporting that as 500 would both hide an actionable message and
+        invite clients to retry a request that cannot succeed.
+        """
+        logger.warning("Invalid Anthropic request: %s", exc)
+        return self._error_response(
+            status_code=400,
+            error_type="invalid_request_error",
+            message=str(exc),
         )
 
     def _error_response(
