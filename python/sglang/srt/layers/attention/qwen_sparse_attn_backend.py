@@ -70,7 +70,21 @@ def _resolve_flash_attn_varlen_func():
 
     Classic flash_attn (FA2, Ampere/Hopper) is preferred when installed;
     flash-attn-4's cute interface serves the same call shape on Blackwell.
+
+    SM12x (consumer/workstation Blackwell) is checked FIRST: the pip
+    flash_attn.cute path below compiles a generic/SM100 kernel that fails on the
+    QSA varlen shape there, and SGLang already carries an SM12x-native FA4 entry
+    point. Mirrors the selection in flashattention_backend.py. sglang#36531.
     """
+    from sglang.srt.utils import is_sm120_supported
+
+    if is_sm120_supported():
+        from sglang.kernels.ops.attention.flash_attention_v4_sm120 import (
+            flash_attn_varlen_func,
+        )
+
+        return flash_attn_varlen_func
+
     try:
         from flash_attn import flash_attn_varlen_func
 
