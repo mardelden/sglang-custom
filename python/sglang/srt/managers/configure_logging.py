@@ -41,6 +41,17 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dump-requests-threshold", type=int, default=1000)
     parser.add_argument(
+        "--log-requests-events",
+        nargs="*",
+        default=None,
+        choices=["received", "received.openai", "finished"],
+        help=(
+            "Which request-logging events to emit. 'finished' alone captures every "
+            "request/response pair while writing the prompt once instead of three "
+            "times. Unset leaves the server's current selection alone."
+        ),
+    )
+    parser.add_argument(
         "--dump-requests-exclude-meta-keys",
         type=str,
         default=None,
@@ -59,6 +70,8 @@ if __name__ == "__main__":
         "dump_requests_threshold": args.dump_requests_threshold,
         "log_level": args.log_level,
     }
+    if args.log_requests_events is not None:
+        payload["log_requests_events"] = args.log_requests_events
     if args.dump_requests_exclude_meta_keys is not None:
         payload["dump_requests_exclude_meta_keys"] = [
             k.strip()

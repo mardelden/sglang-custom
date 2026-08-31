@@ -607,6 +607,7 @@ class TokenizerManager(TokenizerControlMixin, TokenizerManagerScoreMixin):
             log_requests_level=get_observability().log_requests_level,
             log_requests_format=get_observability().log_requests_format,
             log_requests_target=get_observability().log_requests_target,
+            log_requests_events=get_observability().log_requests_events,
         )
 
         # Dumping
@@ -2105,6 +2106,7 @@ class TokenizerManager(TokenizerControlMixin, TokenizerManagerScoreMixin):
             log_requests=obj.log_requests,
             log_requests_level=obj.log_requests_level,
             log_requests_format=obj.log_requests_format,
+            log_requests_events=obj.log_requests_events,
         )
         if obj.dump_requests_folder is not None:
             self.dump_requests_folder = obj.dump_requests_folder

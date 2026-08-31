@@ -1468,6 +1468,26 @@ class ServerArgs:
         "Target(s) for request logging: 'stdout' and/or directory path(s) for file output. Can specify multiple targets, e.g., '--log-requests-target stdout /my/path'. ",
         NS("observability"),
     ] = None
+    log_requests_events: A[
+        List[str],
+        Arg(
+            help="Which request-logging events to emit. 'received' is the adapted "
+            "request, 'received.openai' the raw OpenAI payload before adaptation "
+            "(only ever emitted at --log-requests-level >= 2), and 'finished' "
+            "carries the request AND the response. Defaults to all three. "
+            "'finished' is self-sufficient -- it re-serializes the request next to "
+            "the response -- so '--log-requests-events finished' captures every "
+            "request/response pair while writing the prompt once instead of three "
+            "times. The cost is losing any trace of requests that never complete "
+            "(client disconnects, aborts, crashes), which today show up as a "
+            "'received' line with no matching 'finished'.",
+            nargs="*",
+            choices=["received", "received.openai", "finished"],
+        ),
+        NS("observability"),
+    ] = dataclasses.field(
+        default_factory=lambda: ["received", "received.openai", "finished"]
+    )
     uvicorn_access_log_exclude_prefixes: A[
         List[str],
         Arg(
