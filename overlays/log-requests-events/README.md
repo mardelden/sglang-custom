@@ -65,9 +65,33 @@ and that the OpenAI gate is False at level 1 and False when the event is deselec
 Accepted upstream, or superseded. Worth upstreaming — the 3× reduction is a general
 win, not a local quirk.
 
+## Two delivery variants — pick by base
+
+The same change exists twice, because the deployed runtimes predate the
+runtime-context config-bag migration. `TokenizerManager` reads
+`self.server_args.log_requests_*` on both deployed bases and
+`get_observability().log_requests_*` on current upstream, so **one patch cannot
+serve both.** Nothing else differs.
+
+| Branch | Base | Use for |
+|---|---|---|
+| `feat/log-requests-events` | `upstream/main` | upstreaming; any tree on current main |
+| `overlay/log-requests-events-v0.5.18` | `v0.5.18` | **both deployed runtimes** — verified to apply to `v0.5.18` *and* to PR #36497 @ `7c66045d7` |
+
+Applying the `main` variant to a deployed tree fails on
+`tokenizer_manager.py` — that is the accessor difference, not a context drift, so
+do not force it through.
+
 ## Extract
 
 ```bash
+# for deployment (stock wheel or the qwen4 source tree)
+git diff v0.5.18..overlay/log-requests-events-v0.5.18 -- python/ > log-requests-events.patch
+
+# for upstreaming
 BASE=$(git merge-base upstream/main feat/log-requests-events)
 git diff $BASE..feat/log-requests-events -- python/ > log-requests-events.patch
 ```
+
+Applied to a **source tree** use `strip=1`; applied to an installed wheel's
+`site-packages` use `strip=2`, which also drops the `python/` prefix.
