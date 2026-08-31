@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+ALL_REQUEST_LOG_EVENTS = ("received", "received.openai", "finished")
+
 _DEFAULT_WHITELISTED_HEADERS = ["x-smg-routing-key"]
 WHITELISTED_HEADERS = _DEFAULT_WHITELISTED_HEADERS + [
     h.lower() for h in envs.SGLANG_LOG_REQUEST_HEADERS.get()
@@ -48,11 +50,17 @@ class RequestLogger:
         log_requests_level: int,
         log_requests_format: str,
         log_requests_target: Optional[List[str]],
+        log_requests_events: Optional[List[str]] = None,
     ):
         self.log_requests = log_requests
         self.log_requests_level = log_requests_level
         self.log_requests_format = log_requests_format
         self.log_requests_target = log_requests_target
+        self.log_requests_events = (
+            list(log_requests_events)
+            if log_requests_events is not None
+            else list(ALL_REQUEST_LOG_EVENTS)
+        )
 
         self.metadata: Tuple[Optional[int], Optional[Set[str]], Optional[Set[str]]] = (
             self._compute_metadata()
@@ -72,6 +80,7 @@ class RequestLogger:
         log_requests_level: Optional[int] = None,
         log_requests_format: Optional[str] = None,
         log_requests_target: Optional[List[str]] = None,
+        log_requests_events: Optional[List[str]] = None,
     ) -> None:
         if log_requests is not None:
             self.log_requests = log_requests
@@ -81,6 +90,8 @@ class RequestLogger:
             self.log_requests_format = log_requests_format
         if log_requests_target is not None:
             self.log_requests_target = log_requests_target
+        if log_requests_events is not None:
+            self.log_requests_events = list(log_requests_events)
 
         self.metadata = self._compute_metadata()
         self.targets = self._setup_targets()
@@ -95,20 +106,24 @@ class RequestLogger:
             return
 
         max_length, skip_names, _ = self.metadata
-        headers = _extract_whitelisted_headers(request)
-        if self.log_requests_format == "json":
-            log_data = {
-                "rid": obj.rid,
-                "obj": _transform_data_for_logging(obj, max_length, skip_names),
-            }
-            if headers:
-                log_data["headers"] = headers
-            log_json(self.targets, "request.received", log_data)
-        else:
-            headers_str = f", headers={headers}" if headers else ""
-            self._log(
-                f"Receive: obj={_dataclass_to_string_truncated(obj, max_length, skip_names=skip_names)}{headers_str}"
-            )
+        # Only the EMISSION is gated. The input_ids -> obj.text decode below runs
+        # either way: `request.finished` re-serializes obj and would otherwise
+        # lose its text for input_ids-only requests when this event is disabled.
+        if self._emits("received"):
+            headers = _extract_whitelisted_headers(request)
+            if self.log_requests_format == "json":
+                log_data = {
+                    "rid": obj.rid,
+                    "obj": _transform_data_for_logging(obj, max_length, skip_names),
+                }
+                if headers:
+                    log_data["headers"] = headers
+                log_json(self.targets, "request.received", log_data)
+            else:
+                headers_str = f", headers={headers}" if headers else ""
+                self._log(
+                    f"Receive: obj={_dataclass_to_string_truncated(obj, max_length, skip_names=skip_names)}{headers_str}"
+                )
 
         # FIXME: This is a temporary fix to get the text from the input ids.
         # We should remove this once we have a proper way.
@@ -134,6 +149,8 @@ class RequestLogger:
         request: Optional[fastapi.Request] = None,
     ) -> None:
         """Log the raw OpenAI request payload before request adaptation/tokenization."""
+        if not self.should_log_openai_received():
+            return
         max_length, _, _ = self.metadata
         max_length = max_length if max_length is not None else 2048
         headers = _extract_whitelisted_headers(request)
@@ -167,6 +184,9 @@ class RequestLogger:
 
         e2e_latency_ms = out["meta_info"].get("e2e_latency", 0) * 1000
         if self.log_exceeded_ms > 0 and e2e_latency_ms < self.log_exceeded_ms:
+            return
+
+        if not self._emits("finished"):
             return
 
         max_length, skip_names, out_skip_names = self.metadata
@@ -233,6 +253,26 @@ class RequestLogger:
                     f"Invalid --log-requests-level: {self.log_requests_level=}"
                 )
         return max_length, skip_names, out_skip_names
+
+    def _emits(self, event: str) -> bool:
+        """Whether ``event`` should be written at all.
+
+        Separate from ``log_requests`` because the caller may want the
+        request/response pair (``finished``, which carries both) without the two
+        ``received`` events that re-serialize the same prompt ahead of it.
+        """
+        return self.log_requests and event in self.log_requests_events
+
+    def should_log_openai_received(self) -> bool:
+        """Guard for the raw-OpenAI event, checked by the caller.
+
+        Lives here rather than at the call site so the level rule and the event
+        rule stay in one place. The level check is what keeps the raw payload out
+        of levels 0 and 1: unlike the other two events this one does not apply
+        ``skip_names``, so emitting it there would leak the content those levels
+        exist to redact.
+        """
+        return self._emits("received.openai") and self.log_requests_level >= 2
 
     def _log(self, msg: str) -> None:
         for target in self.targets:
