@@ -83,11 +83,17 @@ the PR head carrying only 2 squashed commits while `v0.5.18` carries 47. The
 qwen4 commits cherry-pick onto `v0.5.18` with **0 conflicts** but onto current
 `upstream/main` with **14**, which is why `unified` is anchored at 0.5.18.
 
-## Other branches
+## Documentation layout
 
-| Branch | Purpose |
+| Where | What |
 |---|---|
-| `notes` | `plans/` — our decisions and lessons about operating this fork |
+| `DEPLOYMENT-BRANCHES.md` (this file, `main`) | the index — every carried set, its scope and removal condition |
+| `plans/` (`main`) | decisions and lessons about operating this fork |
+| `overlays/<name>/README.md` (on the branch carrying the set) | the per-set manifest — **authoritative where it disagrees with this index** |
+
+Per-set docs deliberately do not live at the repo root: two sets would write the
+same path with different content and collide the moment they are composed. A
+directory per set is disjoint by construction and travels with the branch.
 
 ## Caveats
 
