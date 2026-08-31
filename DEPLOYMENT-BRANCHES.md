@@ -23,6 +23,7 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | `qsa-sm120-fa4` | `09dc961d6a` | 1 | **no** — see prerequisite | host+model — sm120 × Flash-Next | no (correctness fix) |
 | `anthropic-effort-400` | `40f7ae1178` | 2 | **yes** | fleet-wide | no (bug fix) |
 | `log-requests-events` | `c417f8e154` | 6 | **yes** | fleet-wide | **yes** — defaults to all events |
+| `log-requests-events` *(v0.5.18 backport)* | `e553971e5c` | 6 | n/a — targets `v0.5.18` | fleet-wide | **yes** |
 
 Verified, not assumed: the four sets touch **disjoint files**, and the three
 stock-applicable ones apply cleanly to `upstream/main` in any order.
@@ -59,6 +60,10 @@ written three times (~1.7 MB) to once.
 *Activates:* only when the flag is passed — the default is all three events, so
 a deployment that sets nothing behaves exactly as before.
 *Remove when:* accepted upstream, or superseded.
+*Deploying it:* `plans/handovers/deploy-log-requests-events.md`. Note the
+deployed runtimes need the **`overlay/log-requests-events-v0.5.18`** variant —
+the `main`-based one does not apply to either, because `TokenizerManager` reads
+`self.server_args.*` there and `get_observability().*` on current upstream.
 
 ## Deployment snapshot branches (not overlays)
 
@@ -89,6 +94,7 @@ qwen4 commits cherry-pick onto `v0.5.18` with **0 conflicts** but onto current
 |---|---|
 | `DEPLOYMENT-BRANCHES.md` (this file, `main`) | the index — every carried set, its scope and removal condition |
 | `plans/` (`main`) | decisions and lessons about operating this fork |
+| `plans/handovers/` (`main`) | self-contained notes handed to the deployment team |
 | `overlays/<name>/README.md` (on the branch carrying the set) | the per-set manifest — **authoritative where it disagrees with this index** |
 
 Per-set docs deliberately do not live at the repo root: two sets would write the
