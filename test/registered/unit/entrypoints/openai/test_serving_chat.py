@@ -71,6 +71,7 @@ class _MockTokenizerManager:
             enable_cache_report=False,
             tool_call_parser="hermes",
             reasoning_parser=None,
+            reasoning_efforts=None,
             stream_response_default_include_usage=False,
             default_chat_template_kwargs=None,
         )
@@ -253,6 +254,84 @@ class ServingChatTestCase(unittest.TestCase):
             ],
         )
         self.assertIsNone(self.chat._validate_request(multimodal_request))
+
+    # ------------- reasoning-effort vocabulary tests -------------
+    def _effort_req(self, **overrides):
+        data = dict(
+            model="test-model",
+            messages=[{"role": "user", "content": "Hi"}],
+        )
+        data.update(overrides)
+        return ChatCompletionRequest(**data)
+
+    def test_effort_vocabulary_unset_is_stock_passthrough(self):
+        """No vocabulary declared -> any level flows to the template."""
+        req = self._effort_req(reasoning_effort="banana")
+        self.chat._validate_reasoning_effort_vocabulary(req)  # no raise
+
+    def test_effort_vocabulary_accepts_listed_levels(self):
+        self.tm.server_args.reasoning_efforts = ["xhigh", "medium", "low", "none"]
+        for level in ("xhigh", "medium", "low", "none"):
+            self.chat._validate_reasoning_effort_vocabulary(
+                self._effort_req(reasoning_effort=level)
+            )
+        # unset effort is the model's own default, not a client claim
+        self.chat._validate_reasoning_effort_vocabulary(self._effort_req())
+
+    def test_effort_vocabulary_rejects_unlisted_level_naming_the_list(self):
+        """Reject, never remap -- and the error names the declared levels."""
+        self.tm.server_args.reasoning_efforts = ["xhigh", "medium", "low"]
+        with self.assertRaises(ValueError) as ctx:
+            self.chat._validate_reasoning_effort_vocabulary(
+                self._effort_req(reasoning_effort="high")
+            )
+        self.assertIn("'high'", str(ctx.exception))
+        self.assertIn("xhigh, medium, low", str(ctx.exception))
+
+    def test_effort_vocabulary_float_matches_by_str_form(self):
+        self.tm.server_args.reasoning_efforts = ["0.5", "low"]
+        self.chat._validate_reasoning_effort_vocabulary(
+            self._effort_req(reasoning_effort=0.5)
+        )
+        with self.assertRaises(ValueError):
+            self.chat._validate_reasoning_effort_vocabulary(
+                self._effort_req(reasoning_effort=0.7)
+            )
+
+    def test_effort_vocabulary_without_none_rejects_disable_thinking(self):
+        """A model that cannot not-think must say so, not think anyway."""
+        self.tm.server_args.reasoning_efforts = ["xhigh", "low"]
+        for kwargs in ({"enable_thinking": False}, {"thinking": False}):
+            with self.assertRaises(ValueError) as ctx:
+                self.chat._validate_reasoning_effort_vocabulary(
+                    self._effort_req(chat_template_kwargs=kwargs)
+                )
+            self.assertIn("disabling reasoning", str(ctx.exception))
+        # 'none' as the effort tier takes the tier path and is rejected too
+        with self.assertRaises(ValueError):
+            self.chat._validate_reasoning_effort_vocabulary(
+                self._effort_req(reasoning_effort="none")
+            )
+
+    def test_effort_vocabulary_with_none_allows_disable_thinking(self):
+        self.tm.server_args.reasoning_efforts = ["xhigh", "low", "none"]
+        # effort='none' sets the ctk toggles False via the protocol validator;
+        # both spellings must pass when the vocabulary contains 'none'
+        req = self._effort_req(reasoning_effort="none")
+        self.chat._validate_reasoning_effort_vocabulary(req)
+        self.chat._validate_reasoning_effort_vocabulary(
+            self._effort_req(chat_template_kwargs={"enable_thinking": False})
+        )
+
+    def test_effort_vocabulary_covers_the_template_kwargs_spelling(self):
+        """The ctk spelling converges on the same check inside convert."""
+        self.tm.server_args.reasoning_efforts = ["xhigh", "low"]
+        req = self._effort_req(
+            chat_template_kwargs={"reasoning_effort": "high"}, stream=False
+        )
+        with self.assertRaises(ValueError) as ctx:
+            self.chat._convert_to_internal_request(req)
+        self.assertIn("'high'", str(ctx.exception))
 
     # ------------- conversion tests -------------
     def test_convert_to_internal_request_single(self):

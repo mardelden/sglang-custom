@@ -1400,6 +1400,27 @@ class ServerArgs:
         NS("serving"),
     ] = False
     reasoning_parser: A[Optional[str], NS("serving")] = None
+    reasoning_efforts: A[
+        Optional[List[str]],
+        Arg(
+            help="The reasoning-effort vocabulary this deployment actually "
+            "distinguishes, as opaque case-sensitive strings (exact match; a "
+            "float effort is matched by its str() form, so list '0.5' to "
+            "accept it). When set, a request naming any other level is "
+            "rejected with an error listing these values -- never remapped or "
+            "clamped, and never left to the chat template's fallback, which "
+            "commonly folds unknown levels silently. 'none' is an ordinary "
+            "member meaning this model can genuinely disable reasoning; "
+            "without it, disable-thinking requests (reasoning_effort='none', "
+            "or an explicit enable_thinking/thinking=False template kwarg) "
+            "are rejected instead of being silently ignored by an "
+            "always-thinking model. Unset or empty disables the check "
+            "entirely (stock passthrough). List order only affects the error "
+            "message.",
+            nargs="*",
+        ),
+        NS("serving"),
+    ] = None
     default_chat_template_kwargs: A[
         Optional[Dict[str, Any]],
         Arg(
