@@ -963,6 +963,59 @@ class OpenAIServingChat(OpenAIServingBase):
             f"received unsupported content type '{media_type}'."
         )
 
+    def _validate_reasoning_effort_vocabulary(
+        self, request: ChatCompletionRequest
+    ) -> None:
+        """Reject effort levels this deployment does not distinguish.
+
+        The chat template is what ultimately interprets ``reasoning_effort``,
+        and templates commonly FOLD unknown levels instead of raising --
+        Qwen3.8-Flash-Next defaults an absent value to 'xhigh', GLM-5.3
+        upgrades anything outside ['low','high'] to 'max'. At the call site a
+        silently remapped level is indistinguishable from an honored one, so
+        when the operator has declared the vocabulary (--reasoning-efforts),
+        anything else is rejected with an error naming the declared levels
+        rather than left to the template's fallback. Unset vocabulary means
+        stock passthrough.
+
+        ``none`` doubles as the disable-thinking capability: a vocabulary
+        that omits it declares the model cannot not-think, so requests that
+        ask for that -- effort 'none', or an explicit ``enable_thinking`` /
+        ``thinking`` False template kwarg (the write side of
+        ``apply_reasoning_enabled`` and the ``reasoning_effort='none'``
+        protocol default both land there) -- are rejected instead of being
+        silently ignored by an always-thinking template.
+
+        This runs inside ``_convert_to_internal_request`` because it is the
+        one point every surface converges: the top-level field, the
+        ``chat_template_kwargs`` spelling (popped just above), the Responses
+        ``reasoning.effort`` merge, and the Anthropic adapter all funnel
+        through here, so no per-adapter copy can drift.
+        """
+        efforts = self.tokenizer_manager.server_args.reasoning_efforts
+        if not efforts:
+            return
+
+        effort = request.reasoning_effort
+        if effort is not None:
+            # A float effort (the fine-grained extension) is matched by its
+            # str() form; a deployment that distinguishes one lists e.g. "0.5".
+            key = effort if isinstance(effort, str) else str(effort)
+            if key not in efforts:
+                raise ValueError(
+                    f"reasoning effort '{key}' is not supported by this "
+                    f"deployment; supported levels: {', '.join(efforts)}"
+                )
+
+        if "none" not in efforts:
+            ctk = request.chat_template_kwargs or {}
+            if ctk.get("enable_thinking") is False or ctk.get("thinking") is False:
+                raise ValueError(
+                    "disabling reasoning is not supported by this deployment "
+                    "('none' is not in its reasoning-effort vocabulary); "
+                    f"supported levels: {', '.join(efforts)}"
+                )
+
     def _convert_to_internal_request(
         self,
         request: ChatCompletionRequest,
@@ -980,6 +1033,8 @@ class OpenAIServingChat(OpenAIServingBase):
 
         if reasoning_effort is not None:
             request.reasoning_effort = reasoning_effort
+
+        self._validate_reasoning_effort_vocabulary(request)
 
         if request.stream:
             if request.return_prompt_token_ids:
