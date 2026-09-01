@@ -24,9 +24,13 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | `anthropic-effort-400` | `40f7ae1178` | 2 | **yes** | fleet-wide | no (bug fix) |
 | `log-requests-events` | `c417f8e154` | 6 | **yes** | fleet-wide | **yes** — defaults to all events |
 | `log-requests-events` *(v0.5.18 backport)* | `e553971e5c` | 6 | n/a — targets `v0.5.18` | fleet-wide | **yes** |
+| `reasoning-efforts` | `e5b5939ecc` | 3 | **yes** | fleet-wide | **yes** — unset flag = passthrough |
+| `reasoning-efforts` *(v0.5.18 backport)* | branch `overlay/reasoning-efforts-v0.5.18` | 3 | applies to `v0.5.18` **and** `7c66045d7` | fleet-wide | **yes** |
 
-Verified, not assumed: the four sets touch **disjoint files**, and the three
-stock-applicable ones apply cleanly to `upstream/main` in any order.
+Verified, not assumed: the sets touch disjoint files **except**
+`server_args.py`, shared by `log-requests-events` and `reasoning-efforts` —
+their composition is verified instead: every order applies cleanly on
+`upstream/main`, `v0.5.18`, and `7c66045d7`.
 
 ### `dsv4-sm120-topk-buckets` — on `runtime/stock-0.5.18`
 Pads non-instantiated sparse-MLA topk widths. Without it DeepSeek-V4 + DSPARK
@@ -51,6 +55,18 @@ conversion `ValueError`. Fixes nine `raise_exception` sites, not just effort.
 *Remove when:* fixed upstream. **This is a stock upstream bug and belongs in an
 upstream PR** — it is not a local quirk, and carrying it permanently is the
 wrong end state.
+
+### `reasoning-efforts` — on `feat/reasoning-efforts` (+ `overlay/reasoning-efforts-v0.5.18`)
+Operator-declared effort vocabulary (`--reasoning-efforts`), enforced at the
+one point every client surface converges. Honor verbatim or reject with a 400
+naming the declared levels — never remap, never let the template's fold decide.
+`none` in the list = the model can genuinely disable reasoning; absent = disable
+requests are rejected rather than silently ignored. Implements the fleet's
+per-profile `reasoning_efforts` contract (reference rendering: `roles/llamacpp`).
+*Deploying it:* `plans/handovers/deploy-reasoning-efforts.md`.
+*Caveat:* full unit-test run on the container's venv still pending — it was down
+at land time; the manifest lists the exact suites to run first.
+*Remove when:* accepted upstream.
 
 ### `log-requests-events` — on `feat/log-requests-events`
 Adds `--log-requests-events` so `request.received` / `request.received.openai`
