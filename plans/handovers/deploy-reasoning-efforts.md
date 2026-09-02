@@ -1,5 +1,23 @@
 # Deploy: `--reasoning-efforts` (honest effort vocabulary)
 
+> **Profiles renamed 2026-09-01 (proxmox ADR 046, commit `14d52f1`).** The
+> profile selectors below use the PRE-rename names this note was written against.
+> Nothing engine-side changed — same flags, vocabularies, and patches, only the
+> `-e sglang_profile=` selectors. Current names:
+>
+> | this note says | now |
+> |---|---|
+> | `qwen38-fp8` | `qwen3.8-27b-fp8` |
+> | `qwen38-nvfp4` | `qwen3.8-27b-nvfp4` |
+> | `qwen38-flash-next-fp8` | `qwen3.8-flash-next-fp8` |
+> | `qwen38-flash-next-fp8-sharded` | `qwen3.8-flash-next-fp8-sharded` |
+> | `deepseek-v4-flash-0731-fp4` (default) | `dsv4-flash-fp4` |
+> | `…-fp4-nospec` / `-1m` / `-256k` | `dsv4-flash-fp4-nospec` / `-1m` / `-256k` |
+> | `deepseek-v4-flash-0731-nvfp4` | `dsv4-flash-nvfp4` |
+>
+> The `0731` date now lives only in the `model:` artifact string. This note's
+> content and per-profile vocabularies remain correct as deployed.
+
 **For:** the deployment team · **Written:** 2026-09-01 · implements the fleet's
 per-profile `reasoning_efforts` contract (your reference: `roles/llamacpp`).
 
