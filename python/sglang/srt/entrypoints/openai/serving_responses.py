@@ -316,7 +316,12 @@ class OpenAIServingResponses(OpenAIServingChat):
             return self.create_error_response(str(e))
         except (ValueError, TypeError, RuntimeError, jinja2.TemplateError) as e:
             logger.exception("Error in preprocessing prompt inputs")
-            return self.create_error_response(f"{e} {e.__cause__}")
+            # Only fold in the cause when there is one. Appending
+            # ``str(e.__cause__)`` unconditionally puts a stray " None" on the
+            # wire for every exception raised without a ``from`` clause (e.g. the
+            # reasoning-effort vocabulary gate), which reaches the client verbatim.
+            message = f"{e} {e.__cause__}" if e.__cause__ is not None else str(e)
+            return self.create_error_response(message)
 
         request_metadata = RequestResponseMetadata(request_id=request.request_id)
         if raw_request:
