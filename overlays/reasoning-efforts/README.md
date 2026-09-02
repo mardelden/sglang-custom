@@ -44,10 +44,23 @@ Never remap, never default-upgrade, never let the template's fallback decide.
 ## Where it checks
 
 `OpenAIServingChat._validate_reasoning_effort_vocabulary`, called from
-`_convert_to_internal_request` — the one point every surface converges
-(top-level field, `chat_template_kwargs` spelling, Responses
-`reasoning.effort`, Anthropic adapter), mirroring the existing gpt-oss
-`none` rejection at the same spot. Engine-internal rewrites that happen
+`_process_messages` — the true convergence point. Coverage, verified per
+call site:
+
+| Surface | Reaches the check via |
+|---|---|
+| `/v1/chat/completions` | `_convert_to_internal_request` → `_process_messages` |
+| Anthropic `/v1/messages` | the adapter calls the same convert path (400 via `_conversion_client_error`) |
+| `/v1/responses` (non-harmony) | calls `_process_messages` **directly** — a convert-level check missed it |
+| `/v1/tokenize` | same direct call |
+| harmony (gpt-oss) Responses | **not covered** — renders no chat template |
+
+Both spellings are validated (top-level field and
+`chat_template_kwargs["reasoning_effort"]`), because only the convert path
+pops the ctk copy — on the direct callers the ctk value is what the template
+reads. The check sits after the `default_chat_template_kwargs` merge, so an
+operator default outside the declared vocabulary fails loudly on the first
+request. Engine-internal rewrites that happen
 *before* convert (hunyuan → `no_think`, inkling → `none`, mistral → `medium`)
 arrive at the check in rewritten form — an operator setting a vocabulary on
 those models lists the rewritten spellings. The dsv4/kimi_k3/inkling encoders
