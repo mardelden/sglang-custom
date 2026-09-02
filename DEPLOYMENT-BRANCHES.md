@@ -27,6 +27,7 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | `log-requests-events` *(v0.5.18 backport)* | `e553971e5c` | 6 | n/a — targets `v0.5.18` | fleet-wide | **yes** |
 | `reasoning-efforts` | `e5b5939ecc` | 3 | **yes** | fleet-wide | **yes** — unset flag = passthrough |
 | `reasoning-efforts` *(v0.5.18 backport)* | branch `overlay/reasoning-efforts-v0.5.18` | 3 | applies to `v0.5.18` **and** `7c66045d7` | fleet-wide | **yes** |
+| `responses-error-cause` | branch `feat/responses-error-cause` (+ v0.5.18 overlay) | 1 | one patch → `v0.5.18` **and** `7c66045d7` | fleet-wide (/v1/responses) | no (bug fix) |
 
 Verified, not assumed: the sets touch disjoint files **except**
 `server_args.py`, shared by `log-requests-events` and `reasoning-efforts` —
