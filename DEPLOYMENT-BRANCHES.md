@@ -21,7 +21,8 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 |---|---|---:|---|---|---|
 | `dsv4-sm120-topk-buckets` | `866c002c78` | 1 | **yes** | host-specific — sm120 only | no (correctness fix) |
 | `qsa-sm120-fa4` | `09dc961d6a` | 1 | **no** — see prerequisite | host+model — sm120 × Flash-Next | no (correctness fix) |
-| `anthropic-effort-400` | `40f7ae1178` | 2 | **yes** | fleet-wide | no (bug fix) |
+| `anthropic-effort-400` | `40f7ae1178` | 2 | **yes** | fleet-wide (**stock too** — 27B shares the fold) | no (bug fix) |
+| `anthropic-effort-400` *(overlay pair)* | branches `feat/anthropic-effort-400` + `overlay/…-v0.5.18` | 2 | one code-only patch → `v0.5.18` **and** `7c66045d7` | fleet-wide | no |
 | `log-requests-events` | `c417f8e154` | 6 | **yes** | fleet-wide | **yes** — defaults to all events |
 | `log-requests-events` *(v0.5.18 backport)* | `e553971e5c` | 6 | n/a — targets `v0.5.18` | fleet-wide | **yes** |
 | `reasoning-efforts` | `e5b5939ecc` | 3 | **yes** | fleet-wide | **yes** — unset flag = passthrough |
