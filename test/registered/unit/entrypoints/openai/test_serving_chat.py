@@ -295,8 +295,15 @@ class ServingChatTestCase(unittest.TestCase):
         return ChatCompletionRequest(**data)
 
     def test_effort_vocabulary_unset_is_stock_passthrough(self):
-        """No vocabulary declared -> any level flows to the template."""
-        req = self._effort_req(reasoning_effort="banana")
+        """No vocabulary declared -> the level flows through untouched.
+
+        Uses ``minimal`` -- a legal ``ReasoningEffortTier`` that is nonetheless
+        the kind of value a declared vocabulary would reject -- rather than an
+        arbitrary string: the released-vintage protocol validates the field
+        against the tier Literal at construction, so a nonsense value would
+        fail there (upstream of the gate) instead of exercising passthrough.
+        """
+        req = self._effort_req(reasoning_effort="minimal")
         self.chat._validate_reasoning_effort_vocabulary(req)  # no raise
 
     def test_effort_vocabulary_accepts_listed_levels(self):
