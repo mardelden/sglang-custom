@@ -986,18 +986,26 @@ class OpenAIServingChat(OpenAIServingBase):
         protocol default both land there) -- are rejected instead of being
         silently ignored by an always-thinking template.
 
-        This runs inside ``_convert_to_internal_request`` because it is the
-        one point every surface converges: the top-level field, the
-        ``chat_template_kwargs`` spelling (popped just above), the Responses
-        ``reasoning.effort`` merge, and the Anthropic adapter all funnel
-        through here, so no per-adapter copy can drift.
+        This runs inside ``_process_messages`` because that is the one point
+        every template-rendering surface converges: ``/v1/chat/completions``
+        and the Anthropic adapter reach it via ``_convert_to_internal_request``,
+        while ``/v1/responses`` (non-harmony) and ``/v1/tokenize`` call it
+        directly with their own ``ChatCompletionRequest`` -- a check placed in
+        the convert method missed both. Both spellings are validated here
+        because only the convert path pops ``chat_template_kwargs`` into the
+        top-level field; on the direct callers the ctk copy is the one the
+        template will read (it wins the render-time merge). The harmony
+        (gpt-oss) Responses path does not render a chat template and is out of
+        scope.
         """
         efforts = self.tokenizer_manager.server_args.reasoning_efforts
         if not efforts:
             return
 
-        effort = request.reasoning_effort
-        if effort is not None:
+        ctk = request.chat_template_kwargs or {}
+        for effort in (request.reasoning_effort, ctk.get("reasoning_effort")):
+            if effort is None:
+                continue
             # A float effort (the fine-grained extension) is matched by its
             # str() form; a deployment that distinguishes one lists e.g. "0.5".
             key = effort if isinstance(effort, str) else str(effort)
@@ -1008,7 +1016,6 @@ class OpenAIServingChat(OpenAIServingBase):
                 )
 
         if "none" not in efforts:
-            ctk = request.chat_template_kwargs or {}
             if ctk.get("enable_thinking") is False or ctk.get("thinking") is False:
                 raise ValueError(
                     "disabling reasoning is not supported by this deployment "
@@ -1033,8 +1040,6 @@ class OpenAIServingChat(OpenAIServingBase):
 
         if reasoning_effort is not None:
             request.reasoning_effort = reasoning_effort
-
-        self._validate_reasoning_effort_vocabulary(request)
 
         if request.stream:
             if request.return_prompt_token_ids:
@@ -1164,6 +1169,11 @@ class OpenAIServingChat(OpenAIServingBase):
             effort = ctk.get("reasoning_effort")
             if effort is not None and request.reasoning_effort is None:
                 request.reasoning_effort = effort
+
+        # After the defaults merge, so an operator default outside the declared
+        # vocabulary fails loudly on the first request instead of being folded
+        # by the template on every request forever.
+        self._validate_reasoning_effort_vocabulary(request)
 
         # GptOss model needs to keep special tokens for harmony parsing
         if self.is_gpt_oss or self.is_gemma4:

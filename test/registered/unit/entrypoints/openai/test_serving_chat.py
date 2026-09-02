@@ -354,7 +354,7 @@ class ServingChatTestCase(unittest.TestCase):
         )
 
     def test_effort_vocabulary_covers_the_template_kwargs_spelling(self):
-        """The ctk spelling converges on the same check inside convert."""
+        """The ctk spelling converges on the same check via convert."""
         self.tm.server_args.reasoning_efforts = ["xhigh", "low"]
         req = self._effort_req(
             chat_template_kwargs={"reasoning_effort": "high"}, stream=False
@@ -362,6 +362,19 @@ class ServingChatTestCase(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             self.chat._convert_to_internal_request(req)
         self.assertIn("'high'", str(ctx.exception))
+
+    def test_effort_vocabulary_validates_ctk_directly(self):
+        """Direct _process_messages callers (/v1/responses, /v1/tokenize)
+        never pop ctk into the top-level field; the validator must read the
+        ctk spelling itself."""
+        self.tm.server_args.reasoning_efforts = ["xhigh", "low"]
+        with self.assertRaises(ValueError):
+            self.chat._validate_reasoning_effort_vocabulary(
+                self._effort_req(chat_template_kwargs={"reasoning_effort": "high"})
+            )
+        self.chat._validate_reasoning_effort_vocabulary(
+            self._effort_req(chat_template_kwargs={"reasoning_effort": "low"})
+        )
 
     # ------------- conversion tests -------------
     def test_convert_to_internal_request_single(self):
