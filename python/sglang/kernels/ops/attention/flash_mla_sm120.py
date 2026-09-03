@@ -585,12 +585,31 @@ def _flash_mla_flashinfer(
                 )
 
     if B <= _FI_DECODE_MAX_TOKENS:
-        from flashinfer.mla._sparse_mla_sm120 import _decode_dsv4_dispatchable
-
         _extra_topk = extra_idx.shape[-1] if extra_idx is not None else 0
-        if not _decode_dsv4_dispatchable(
-            B, H, idx.shape[-1], _d_qk, _PBS_DST, _extra_topk
-        ):
+        try:
+            from flashinfer.mla._sparse_mla_sm120 import _decode_dsv4_dispatchable
+
+            _dispatchable = _decode_dsv4_dispatchable(
+                B, H, idx.shape[-1], _d_qk, _PBS_DST, _extra_topk
+            )
+        except ImportError:
+            # flashinfer >= PR-4802: the private predicate is gone; the decode
+            # envelope is continuous (any H in [1,128], topk >= min_topk) and
+            # queried through the public config API instead.
+            from flashinfer.mla import supported_sparse_mla_sm120_configs
+
+            _fam = supported_sparse_mla_sm120_configs().get("dsv4")
+            _dispatchable = (
+                _fam is not None
+                and _d_qk == 512
+                and _fam.supports_decode(
+                    num_heads=H,
+                    topk=idx.shape[-1],
+                    num_tokens=B,
+                    page_block_size=_PBS_DST,
+                )
+            )
+        if not _dispatchable:
             # Decode-sized but not coverable by the CUTLASS decode kernel
             # even after bucket padding (e.g. head_dim != 512 or an
             # uninstantiated head count) — the prefill kernel would reject
