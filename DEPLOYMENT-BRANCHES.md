@@ -29,6 +29,7 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | `reasoning-efforts` | `e5b5939ecc` | 3 | **yes** | fleet-wide | **yes** — unset flag = passthrough |
 | `reasoning-efforts` *(v0.5.18 backport)* | branch `overlay/reasoning-efforts-v0.5.18` | 3 | applies to `v0.5.18` **and** `7c66045d7` | fleet-wide | **yes** |
 | `responses-error-cause` | branch `feat/responses-error-cause` (+ v0.5.18 overlay) | 1 | one patch → `v0.5.18` **and** `7c66045d7` | fleet-wide (/v1/responses) | no (bug fix) |
+| `reapply-28035-dsv4-args` | vendored file `overlays/reapply-28035-dsv4-args/` (no branch — main already has it) | 1 | **no** — PR #37253 trees only (`1ca94a0c10`) | vision runtime; upstream's own #28035 hunk, reverted by the vision commit | no (bug fix) |
 
 Verified, not assumed: the sets touch disjoint files **except**
 `server_args.py`, shared by `log-requests-events` and `reasoning-efforts` —
