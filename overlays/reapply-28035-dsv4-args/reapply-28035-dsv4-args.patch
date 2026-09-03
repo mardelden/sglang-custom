@@ -1,0 +1,41 @@
+commit 265202cda251bd466930f132ce7ca3b45cf33697
+Author: xianzhiT <xianzhitang@tencent.com>
+Date:   Tue Jun 16 20:21:23 2026 +0800
+
+    fix(openai): validate assistant tool call arguments before chat template (#28035)
+    
+    Co-authored-by: Xinyuan Tong <115166877+JustinTong0323@users.noreply.github.com>
+    Co-authored-by: Xinyuan Tong <xinyuantong.cs@gmail.com>
+
+diff --git a/python/sglang/srt/entrypoints/openai/encoding_dsv4.py b/python/sglang/srt/entrypoints/openai/encoding_dsv4.py
+index 0822c9ad15..a19d1f4b10 100644
+--- a/python/sglang/srt/entrypoints/openai/encoding_dsv4.py
++++ b/python/sglang/srt/entrypoints/openai/encoding_dsv4.py
+@@ -141,7 +141,7 @@ def encode_arguments_to_dsml(tool_call: Dict[str, str]) -> str:
+     Encode tool call arguments into DSML parameter format.
+ 
+     Args:
+-        tool_call: Dict with "name" and "arguments" (JSON string) keys.
++        tool_call: Dict with "name" and "arguments" keys.
+ 
+     Returns:
+         DSML-formatted parameter string.
+@@ -149,10 +149,14 @@ def encode_arguments_to_dsml(tool_call: Dict[str, str]) -> str:
+     p_dsml_template = '<{dsml_token}parameter name="{key}" string="{is_str}">{value}</{dsml_token}parameter>'
+     P_dsml_strs = []
+ 
+-    try:
+-        arguments = json.loads(tool_call["arguments"])
+-    except Exception as err:
+-        arguments = {"arguments": tool_call["arguments"]}
++    raw_arguments = tool_call["arguments"]
++    arguments = (
++        json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
++    )
++    if not isinstance(arguments, dict):
++        raise ValueError(
++            "Assistant tool call function.arguments must be a JSON object."
++        )
+ 
+     for k, v in arguments.items():
+         p_dsml_str = p_dsml_template.format(
