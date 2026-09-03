@@ -20,6 +20,7 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | Patch set | Commit | Files | Applies to stock `upstream/main`? | Scope | Off by default? |
 |---|---|---:|---|---|---|
 | `dsv4-sm120-topk-buckets` | `866c002c78` | 1 | **yes** | host-specific — sm120 only | no (correctness fix) |
+| `dsv4-sm120-topk-buckets` *(main variant)* | branch `feat/dsv4-sm120-topk-buckets` | 1 | **yes** (incl. PR #37253 tree) | host-specific — sm120; the vision runtime's copy | no |
 | `qsa-sm120-fa4` | `09dc961d6a` | 1 | **no** — see prerequisite | host+model — sm120 × Flash-Next | no (correctness fix) |
 | `anthropic-effort-400` | `40f7ae1178` | 2 | **yes** | fleet-wide (**stock too** — 27B shares the fold) | no (bug fix) |
 | `anthropic-effort-400` *(overlay pair)* | branches `feat/anthropic-effort-400` + `overlay/…-v0.5.18` | 2 | one code-only patch → `v0.5.18` **and** `7c66045d7` | fleet-wide | no |
@@ -34,12 +35,20 @@ Verified, not assumed: the sets touch disjoint files **except**
 their composition is verified instead: every order applies cleanly on
 `upstream/main`, `v0.5.18`, and `7c66045d7`.
 
-### `dsv4-sm120-topk-buckets` — on `runtime/stock-0.5.18`
+### `dsv4-sm120-topk-buckets` — on `runtime/stock-0.5.18` + `feat/dsv4-sm120-topk-buckets`
 Pads non-instantiated sparse-MLA topk widths. Without it DeepSeek-V4 + DSPARK
 cannot boot on sm120 at all — it dies during draft CUDA-graph capture.
 *Activates:* unconditionally, on sm120.
 *Remove when:* upstream sgl-project/sglang#33407 merges, or flashinfer
 instantiates topk=192 (flashinfer#4309, closed unmerged as of 2026-08-28).
+*Main variant* (branch `feat/dsv4-sm120-topk-buckets`, 2026-09-03): the
+formerly patch-file-only `-main` copy, now carried as a branch. Adds a
+flashinfer >= PR #4802 compatibility fallback (the PR removes the private
+`_decode_dsv4_dispatchable` predicate this patch probes; the branch falls
+back to the public `supported_sparse_mla_sm120_configs()` API). PR-4802
+flashinfer is the sm120 image-prefill fix for DSV4-Vision, so the vision
+runtime runs this variant. See `overlays/dsv4-sm120-topk-buckets/README.md`
+on the branch.
 
 ### `qsa-sm120-fa4` — on `runtime/qwen4-pr36497`
 Routes QSA varlen decode to SGLang's own SM12x FA4 entry point instead of the
