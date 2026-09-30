@@ -34,3 +34,20 @@ text is dropped (a real Anthropic stream never carries it as a block).
   class at the DeepSeek parser layer, closed unmerged).
 - **Remove when:** upstream stops closing an open `tool_use` block on text,
   or routes late argument fragments by tool index.
+
+## Checking a container (no rebuild, nothing installed)
+
+Both scripts run with the serving venv on the SGLang host itself:
+
+- `ab_adapter.py` — **before deploying.** Captures real multi-tool streams from
+  the running engine once, then replays the identical bytes through the
+  installed adapter and through a patched tree put first on `PYTHONPATH`. It
+  needs no restart and no GPU memory beyond serving the captures.
+- `verify_live.py` — **after the restart.** Sends Claude-Code-shaped multi-tool
+  requests to `/v1/messages` and checks that every `tool_use` input parses.
+  Pair it with the journal: no new `Dropping tool_call argument delta`
+  warnings since the restart.
+
+Baseline on ct250 before the fix (2026-09-30): `verify_live.py` found 5/14
+calls invalid; `ab_adapter.py` found 3/7 on the installed adapter and 0/14 on
+the patched tree.
