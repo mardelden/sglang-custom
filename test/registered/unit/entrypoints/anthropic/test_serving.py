@@ -1069,6 +1069,100 @@ class TestAnthropicServing(unittest.TestCase):
         )
         self.assertLess(text_stop_idx, thinking_start_idx)
 
+    def _tool_delta(self, index, arguments, name=None, call_id=None):
+        function = {"arguments": arguments}
+        if name is not None:
+            function["name"] = name
+        tool_call = {"index": index, "type": "function", "function": function}
+        if call_id is not None:
+            tool_call["id"] = call_id
+        return _chunk([_choice({"tool_calls": [tool_call]})])
+
+    @staticmethod
+    def _tool_inputs(events):
+        """Reassemble each tool_use block's streamed input, keyed by index."""
+        inputs = {}
+        for event in events:
+            if (
+                event["type"] == "content_block_start"
+                and event["content_block"]["type"] == "tool_use"
+            ):
+                inputs[event["index"]] = ""
+            elif (
+                event["type"] == "content_block_delta"
+                and event["delta"].get("type") == "input_json_delta"
+            ):
+                inputs[event["index"]] += event["delta"]["partial_json"]
+        return inputs
+
+    def test_stream_separator_text_keeps_late_argument_fragment(self):
+        """The qwen3_coder shape captured on a live server: the parser emits
+        the "\\n" between two calls as text BEFORE the first call's closing
+        brace. That brace must stay in the first tool_use block, and the
+        whitespace must not become a block of its own."""
+        serving = self._serving(
+            [
+                self._tool_delta(0, "{", name="Read", call_id="call_a"),
+                self._tool_delta(0, '"file_path": "/etc/hostname"'),
+                _chunk([_choice({"content": "\n"})]),
+                self._tool_delta(0, "}"),
+                self._tool_delta(1, "{", name="Bash", call_id="call_b"),
+                self._tool_delta(1, '"command": "ls /tmp"'),
+                self._tool_delta(1, "}"),
+                _chunk([_choice({}, finish_reason="tool_calls")]),
+                "data: [DONE]\n\n",
+            ]
+        )
+        events = asyncio.run(
+            _collect_anthropic_events(serving, self._anthropic_request())
+        )
+
+        inputs = self._tool_inputs(events)
+        self.assertEqual(
+            [json.loads(inputs[i]) for i in sorted(inputs)],
+            [{"file_path": "/etc/hostname"}, {"command": "ls /tmp"}],
+        )
+        block_types = [
+            event["content_block"]["type"]
+            for event in events
+            if event["type"] == "content_block_start"
+        ]
+        self.assertEqual(block_types, ["tool_use", "tool_use"])
+
+    def test_stream_prose_between_tool_calls_is_kept_in_order(self):
+        """Non-whitespace text interleaved with a call's arguments is held,
+        not dropped, and emitted between the two tool_use blocks."""
+        serving = self._serving(
+            [
+                self._tool_delta(0, '{"x": ', name="alpha", call_id="call_a"),
+                _chunk([_choice({"content": "Next, beta."})]),
+                self._tool_delta(0, "1}"),
+                self._tool_delta(1, '{"y": 2}', name="beta", call_id="call_b"),
+                _chunk([_choice({}, finish_reason="tool_calls")]),
+                "data: [DONE]\n\n",
+            ]
+        )
+        events = asyncio.run(
+            _collect_anthropic_events(serving, self._anthropic_request())
+        )
+
+        inputs = self._tool_inputs(events)
+        self.assertEqual(json.loads(inputs[0]), {"x": 1})
+        self.assertEqual(json.loads(inputs[2]), {"y": 2})
+        starts = [
+            (event["index"], event["content_block"]["type"])
+            for event in events
+            if event["type"] == "content_block_start"
+        ]
+        self.assertEqual(starts, [(0, "tool_use"), (1, "text"), (2, "tool_use")])
+        text = [
+            event["delta"]["text"]
+            for event in events
+            if event["type"] == "content_block_delta"
+            and event["delta"].get("type") == "text_delta"
+        ]
+        self.assertEqual(text, ["Next, beta."])
+
     def test_stream_consecutive_tool_calls_get_separate_blocks(self):
         """Two tool_use calls in sequence must occupy distinct content_block indices."""
         serving = self._serving(

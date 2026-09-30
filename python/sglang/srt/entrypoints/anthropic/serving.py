@@ -855,6 +855,12 @@ class AnthropicServing:
         final_usage: Optional[AnthropicUsage] = None
         message_started = False
         had_content_delta = False
+        # Text that arrived while a tool_use block was open. Tool-call parsers
+        # can emit the separator between two calls (typically "\n" after
+        # </tool_call>) as text BEFORE flushing the first call's final
+        # argument fragment; opening a text block for it closed the tool_use
+        # block and the late fragment (usually the closing "}") was dropped.
+        held_text = ""
         message_id = f"msg_{uuid.uuid4().hex}"
         model = anthropic_request.model
 
@@ -936,6 +942,29 @@ class AnthropicServing:
                 )
                 content_block_open = True
                 content_block_type = block_type
+            return events
+
+        def _release_held_text_events() -> list[AnthropicStreamEvent]:
+            """Emit text held back while a tool_use block was open.
+
+            Called before the next block of any other kind opens and at end of
+            stream, so the text keeps its position relative to the blocks
+            around it. Whitespace-only text is dropped: it is the separator a
+            parser leaves between tool calls, not prose, and a real Anthropic
+            stream never carries it as a block.
+            """
+            nonlocal held_text, had_content_delta
+            text, held_text = held_text, ""
+            if not text.strip():
+                return []
+            events = _ensure_content_block_events("text", TextBlock(text=""))
+            events.append(
+                ContentBlockDeltaEvent(
+                    index=content_block_index,
+                    delta=TextDelta(text=text),
+                )
+            )
+            had_content_delta = True
             return events
 
         def _ensure_message_started(usage) -> list[str]:
@@ -1061,6 +1090,9 @@ class AnthropicServing:
                     yield _emit(MessageStopEvent())
                     continue
 
+                for event in _release_held_text_events():
+                    yield _emit(event)
+
                 # Close any open content block
                 for event in _close_content_block_events():
                     yield _emit(event)
@@ -1171,6 +1203,8 @@ class AnthropicServing:
 
             # Handle reasoning content deltas
             if delta.reasoning_content:
+                for event in _release_held_text_events():
+                    yield _emit(event)
                 for event in _ensure_content_block_events(
                     "thinking",
                     ThinkingBlock(thinking=""),
@@ -1195,6 +1229,8 @@ class AnthropicServing:
                     # it was also tool_use — each tool needs its own index)
                     # and start a fresh one.
                     if tc_func and tc_func.name:
+                        for event in _release_held_text_events():
+                            yield _emit(event)
                         for event in _ensure_content_block_events(
                             "tool_use",
                             ToolUseBlock(
@@ -1242,6 +1278,12 @@ class AnthropicServing:
 
             # Handle text content deltas
             if delta.content is not None and delta.content != "":
+                if content_block_type == "tool_use":
+                    # Keep the tool_use block open: more argument fragments
+                    # for it may still follow this text.
+                    held_text += delta.content
+                    continue
+
                 for event in _ensure_content_block_events(
                     "text",
                     TextBlock(text=""),
