@@ -29,12 +29,16 @@ git diff $BASE..<branch> -- python/ > overlay.patch
 | `reasoning-efforts` | `e5b5939ecc` | 3 | **yes** | fleet-wide | **yes** — unset flag = passthrough |
 | `reasoning-efforts` *(v0.5.18 backport)* | branch `overlay/reasoning-efforts-v0.5.18` | 3 | applies to `v0.5.18` **and** `7c66045d7` | fleet-wide | **yes** |
 | `responses-error-cause` | branch `feat/responses-error-cause` (+ v0.5.18 overlay) | 1 | one patch → `v0.5.18` **and** `7c66045d7` | fleet-wide (/v1/responses) | no (bug fix) |
+| `anthropic-tool-args-hold-text` *(overlay pair)* | branches `feat/anthropic-tool-args-hold-text` + `overlay/…-v0.5.18` | 1 | **yes**; composes with `anthropic-effort-400` (same file) in either order on `v0.5.18`, `main`, `7c66045d7`, `1ca94a0c10` | fleet-wide (every model behind `/v1/messages`) | no (bug fix) |
 | `reapply-28035-dsv4-args` | vendored file `overlays/reapply-28035-dsv4-args/` (no branch — main already has it) | 1 | **no** — PR #37253 trees only (`1ca94a0c10`) | vision runtime; upstream's own #28035 hunk, reverted by the vision commit | no (bug fix) |
 
 Verified, not assumed: the sets touch disjoint files **except**
 `server_args.py`, shared by `log-requests-events` and `reasoning-efforts` —
 their composition is verified instead: every order applies cleanly on
-`upstream/main`, `v0.5.18`, and `7c66045d7`.
+`upstream/main`, `v0.5.18`, and `7c66045d7`. Likewise
+`anthropic/serving.py`, shared by `anthropic-effort-400` and
+`anthropic-tool-args-hold-text`: both orders apply cleanly on `main`,
+`v0.5.18`, `7c66045d7`, and `1ca94a0c10` (checked 2026-09-30).
 
 ### `dsv4-sm120-topk-buckets` — on `runtime/stock-0.5.18` + `feat/dsv4-sm120-topk-buckets`
 Pads non-instantiated sparse-MLA topk widths. Without it DeepSeek-V4 + DSPARK
